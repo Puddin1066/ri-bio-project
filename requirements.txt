@@ -1,0 +1,5 @@
+Django>=3.2,<4.0
+pandas
+requests
+xlsxwriter
+python-docx
