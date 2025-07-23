@@ -4,7 +4,8 @@ from django.views.decorators.http import require_http_methods
 from django.shortcuts import render
 import json
 from .scraper import StreetEasyAgent
-from .models import StreetEasyProperty, StreetEasySearch
+from .liquidity_scraper import LiquidityEventScraper, LiquidityAnalyzer
+from .models import StreetEasyProperty, StreetEasySearch, StreetEasyLiquidityEvent, StreetEasyEntity
 
 
 @csrf_exempt
@@ -443,3 +444,206 @@ def dashboard(request):
         
     except Exception as e:
         return render(request, 'streeteasy_integration/error.html', {'error': str(e)})
+
+
+@require_http_methods(["GET"])
+def get_largest_liquidity_events(request):
+    """
+    Get the largest liquidity events within a timeframe
+    
+    GET /api/streeteasy/liquidity/largest/?timeframe_days=365&limit=10
+    """
+    try:
+        timeframe_days = int(request.GET.get('timeframe_days', 365))
+        limit = int(request.GET.get('limit', 10))
+        
+        analyzer = LiquidityAnalyzer()
+        events = analyzer.get_largest_liquidity_events(timeframe_days, limit)
+        
+        return JsonResponse({
+            'success': True,
+            'timeframe_days': timeframe_days,
+            'count': len(events),
+            'events': events
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@require_http_methods(["GET"])
+def get_most_active_entities(request):
+    """
+    Get entities with the most transaction volume
+    
+    GET /api/streeteasy/liquidity/entities/?timeframe_days=365&limit=10
+    """
+    try:
+        timeframe_days = int(request.GET.get('timeframe_days', 365))
+        limit = int(request.GET.get('limit', 10))
+        
+        analyzer = LiquidityAnalyzer()
+        entities = analyzer.get_most_active_entities(timeframe_days, limit)
+        
+        return JsonResponse({
+            'success': True,
+            'timeframe_days': timeframe_days,
+            'count': len(entities),
+            'entities': entities
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def liquidity_question(request):
+    """
+    Answer natural language questions about liquidity events
+    
+    POST /api/streeteasy/liquidity/question/
+    
+    JSON body:
+    {
+        "question": "Who has had the largest liquidity event in the past year?"
+    }
+    """
+    try:
+        data = json.loads(request.body)
+        question = data.get('question', '')
+        
+        if not question:
+            return JsonResponse({
+                'success': False,
+                'error': 'Question parameter is required'
+            }, status=400)
+        
+        analyzer = LiquidityAnalyzer()
+        answer = analyzer.answer_liquidity_question(question)
+        
+        return JsonResponse({
+            'success': True,
+            'question': question,
+            'answer': answer
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def scrape_liquidity_events(request):
+    """
+    Manually trigger scraping of liquidity events
+    
+    POST /api/streeteasy/liquidity/scrape/
+    
+    JSON body:
+    {
+        "min_amount": 1000000,
+        "days_back": 365,
+        "include_news": true
+    }
+    """
+    try:
+        data = json.loads(request.body) if request.body else {}
+        
+        min_amount = data.get('min_amount', 1000000)
+        days_back = data.get('days_back', 365)
+        include_news = data.get('include_news', True)
+        
+        scraper = LiquidityEventScraper()
+        all_events = []
+        
+        # Scrape StreetEasy sold data
+        streeteasy_events = scraper.scrape_streeteasy_sold_data(min_amount, days_back)
+        all_events.extend(streeteasy_events)
+        
+        # Scrape news articles if requested
+        if include_news:
+            news_events = scraper.scrape_news_articles(min(days_back, 30))  # Limit news scraping
+            all_events.extend(news_events)
+        
+        # Save events to database
+        created, updated = scraper.save_liquidity_events(all_events)
+        
+        return JsonResponse({
+            'success': True,
+            'total_events_found': len(all_events),
+            'events_created': created,
+            'events_updated': updated,
+            'parameters': {
+                'min_amount': min_amount,
+                'days_back': days_back,
+                'include_news': include_news
+            }
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@require_http_methods(["GET"])
+def liquidity_stats(request):
+    """
+    Get overall liquidity statistics
+    
+    GET /api/streeteasy/liquidity/stats/
+    """
+    try:
+        from django.db.models import Sum, Count, Max, Avg
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        # Overall stats
+        total_events = StreetEasyLiquidityEvent.objects.count()
+        total_volume = StreetEasyLiquidityEvent.objects.aggregate(Sum('transaction_amount'))['transaction_amount__sum'] or 0
+        avg_transaction = StreetEasyLiquidityEvent.objects.aggregate(Avg('transaction_amount'))['transaction_amount__avg'] or 0
+        largest_transaction = StreetEasyLiquidityEvent.objects.aggregate(Max('transaction_amount'))['transaction_amount__max'] or 0
+        
+        # Recent activity (past 30 days)
+        recent_cutoff = timezone.now().date() - timedelta(days=30)
+        recent_events = StreetEasyLiquidityEvent.objects.filter(transaction_date__gte=recent_cutoff).count()
+        recent_volume = StreetEasyLiquidityEvent.objects.filter(
+            transaction_date__gte=recent_cutoff
+        ).aggregate(Sum('transaction_amount'))['transaction_amount__sum'] or 0
+        
+        # Entity stats
+        total_entities = StreetEasyEntity.objects.count()
+        most_active_entity = StreetEasyEntity.objects.order_by('-total_transaction_volume').first()
+        
+        return JsonResponse({
+            'success': True,
+            'overall_stats': {
+                'total_events': total_events,
+                'total_volume': float(total_volume),
+                'avg_transaction': float(avg_transaction),
+                'largest_transaction': float(largest_transaction),
+                'total_entities': total_entities,
+            },
+            'recent_activity_30_days': {
+                'events': recent_events,
+                'volume': float(recent_volume),
+            },
+            'most_active_entity': most_active_entity.to_dict() if most_active_entity else None,
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)

@@ -18,5 +18,6 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('my_project/', include('my_project.urls'))
+    path('my_project/', include('my_project.urls')),
+    path('', include('streeteasy_integration.urls')),
 ]

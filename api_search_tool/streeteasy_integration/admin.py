@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import StreetEasyProperty, StreetEasySearch, StreetEasyAPIKey
+from .models import StreetEasyProperty, StreetEasySearch, StreetEasyAPIKey, StreetEasyLiquidityEvent, StreetEasyEntity
 
 
 @admin.register(StreetEasyProperty)
@@ -176,6 +176,129 @@ class StreetEasyAPIKeyAdmin(admin.ModelAdmin):
         updated = queryset.update(requests_made_today=0)
         self.message_user(request, f'Reset request counters for {updated} API keys.')
     reset_daily_requests.short_description = 'Reset daily requests'
+
+
+@admin.register(StreetEasyLiquidityEvent)
+class StreetEasyLiquidityEventAdmin(admin.ModelAdmin):
+    list_display = [
+        'event_id', 'seller_name', 'buyer_name', 'formatted_amount_display', 
+        'event_type', 'transaction_date', 'property_address', 'confidence_score'
+    ]
+    list_filter = [
+        'event_type', 'seller_type', 'buyer_type', 'transaction_date', 
+        'neighborhood', 'borough', 'confidence_score'
+    ]
+    search_fields = ['seller_name', 'buyer_name', 'property_address', 'event_id']
+    readonly_fields = ['event_id', 'created_at', 'updated_at']
+    
+    fieldsets = (
+        ('Event Information', {
+            'fields': ('event_id', 'event_type', 'transaction_date', 'transaction_amount', 'currency')
+        }),
+        ('Parties Involved', {
+            'fields': ('seller_name', 'seller_type', 'buyer_name', 'buyer_type')
+        }),
+        ('Property Details', {
+            'fields': ('property_address', 'neighborhood', 'borough', 'property_type', 
+                      'square_footage', 'unit_count', 'price_per_sqft', 'cap_rate')
+        }),
+        ('Transaction Details', {
+            'fields': ('broker_firm', 'broker_name')
+        }),
+        ('Source Information', {
+            'fields': ('source_url', 'source_publication', 'confidence_score')
+        }),
+        ('Additional Data', {
+            'fields': ('notes', 'tags', 'raw_data'),
+            'classes': ('collapse',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at')
+        })
+    )
+    
+    def formatted_amount_display(self, obj):
+        return obj.formatted_amount
+    formatted_amount_display.short_description = 'Amount'
+    
+    actions = ['update_entity_metrics']
+    
+    def update_entity_metrics(self, request, queryset):
+        """Update metrics for entities involved in selected events"""
+        from .liquidity_scraper import LiquidityEventScraper
+        scraper = LiquidityEventScraper()
+        
+        for event in queryset:
+            scraper._update_entities_from_event(event.to_dict())
+        
+        self.message_user(request, f'Updated entity metrics for {queryset.count()} events.')
+    update_entity_metrics.short_description = 'Update entity metrics'
+
+
+@admin.register(StreetEasyEntity)
+class StreetEasyEntityAdmin(admin.ModelAdmin):
+    list_display = [
+        'name', 'entity_type', 'transaction_count', 'formatted_total_volume', 
+        'formatted_largest_transaction', 'last_transaction_date'
+    ]
+    list_filter = ['entity_type', 'most_active_year', 'last_transaction_date']
+    search_fields = ['name', 'description']
+    readonly_fields = ['entity_id', 'created_at', 'updated_at']
+    
+    fieldsets = (
+        ('Entity Information', {
+            'fields': ('entity_id', 'name', 'entity_type', 'description')
+        }),
+        ('Details', {
+            'fields': ('headquarters_location', 'founded_year', 'website')
+        }),
+        ('Transaction Metrics', {
+            'fields': ('total_transaction_volume', 'transaction_count', 'largest_transaction', 
+                      'avg_transaction_size', 'last_transaction_date', 'most_active_year')
+        }),
+        ('Market Focus', {
+            'fields': ('primary_markets', 'property_types_focus')
+        }),
+        ('Additional Data', {
+            'fields': ('aliases', 'related_entities', 'tags'),
+            'classes': ('collapse',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at')
+        })
+    )
+    
+    def formatted_total_volume(self, obj):
+        volume = float(obj.total_transaction_volume)
+        if volume >= 1_000_000_000:
+            return f"${volume/1_000_000_000:.1f}B"
+        elif volume >= 1_000_000:
+            return f"${volume/1_000_000:.1f}M"
+        else:
+            return f"${volume:,.0f}"
+    formatted_total_volume.short_description = 'Total Volume'
+    
+    def formatted_largest_transaction(self, obj):
+        if obj.largest_transaction:
+            amount = float(obj.largest_transaction)
+            if amount >= 1_000_000_000:
+                return f"${amount/1_000_000_000:.1f}B"
+            elif amount >= 1_000_000:
+                return f"${amount/1_000_000:.1f}M"
+            else:
+                return f"${amount:,.0f}"
+        return "N/A"
+    formatted_largest_transaction.short_description = 'Largest Transaction'
+    
+    actions = ['refresh_metrics']
+    
+    def refresh_metrics(self, request, queryset):
+        """Refresh transaction metrics for selected entities"""
+        for entity in queryset:
+            entity.update_metrics()
+        
+        self.message_user(request, f'Refreshed metrics for {queryset.count()} entities.')
+    refresh_metrics.short_description = 'Refresh metrics'
 
 
 # Customize admin site
