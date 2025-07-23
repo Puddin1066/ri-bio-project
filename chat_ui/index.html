@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Data Assistant - EDGAR & Real Estate</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="chat-container">
+        <!-- Header -->
+        <div class="chat-header">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-robot"></i>
+                    <h1>AI Data Assistant</h1>
+                </div>
+                <div class="data-sources">
+                    <span class="source edgar"><i class="fas fa-building"></i> EDGAR</span>
+                    <span class="source streeteasy"><i class="fas fa-home"></i> Real Estate</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Messages Container -->
+        <div class="chat-messages" id="chatMessages">
+            <div class="message bot-message">
+                <div class="message-avatar">
+                    <i class="fas fa-robot"></i>
+                </div>
+                <div class="message-content">
+                    <div class="message-text">
+                        Hello! I'm your AI Data Assistant. I can help you query and analyze data from:
+                        <br><br>
+                        📈 <strong>EDGAR API</strong> - SEC filings, company financials, insider trading, and corporate data
+                        <br>
+                        🏠 <strong>Real Estate Database</strong> - High-value property transactions, luxury market trends, and ownership records
+                        <br><br>
+                        What would you like to explore today?
+                    </div>
+                    <div class="message-time">Just now</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Suggested Queries -->
+        <div class="suggested-queries" id="suggestedQueries">
+            <h3>Try asking:</h3>
+            <div class="query-buttons">
+                <button class="query-btn" onclick="sendSuggestedQuery('Show me the latest 10-K filings for Tesla')">
+                    <i class="fas fa-file-alt"></i>
+                    Latest Tesla 10-K filings
+                </button>
+                <button class="query-btn" onclick="sendSuggestedQuery('Who in zip code 90210 bought or sold a house over $25 million?')">
+                    <i class="fas fa-search"></i>
+                    $25M+ sales in Beverly Hills
+                </button>
+                <button class="query-btn" onclick="sendSuggestedQuery('Compare Apple and Microsoft financial metrics')">
+                    <i class="fas fa-chart-line"></i>
+                    Compare AAPL vs MSFT
+                </button>
+                <button class="query-btn" onclick="sendSuggestedQuery('Show luxury real estate trends in Manhattan zip code 10021')">
+                    <i class="fas fa-trending-up"></i>
+                    Manhattan luxury trends
+                </button>
+                <button class="query-btn" onclick="sendSuggestedQuery('Find high-value property transactions in Palo Alto over $30 million')">
+                    <i class="fas fa-home"></i>
+                    Palo Alto $30M+ sales
+                </button>
+                <button class="query-btn" onclick="sendSuggestedQuery('Who are the biggest buyers in Miami Beach luxury real estate?')">
+                    <i class="fas fa-users"></i>
+                    Miami Beach luxury buyers
+                </button>
+            </div>
+        </div>
+
+        <!-- Chat Input -->
+        <div class="chat-input-container">
+            <div class="chat-input">
+                <input 
+                    type="text" 
+                    id="messageInput" 
+                    placeholder="Ask about EDGAR filings, company data, or high-value real estate transactions..."
+                    autocomplete="off"
+                >
+                <button id="sendButton" onclick="sendMessage()">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Loading indicator -->
+        <div class="loading-indicator" id="loadingIndicator">
+            <div class="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <div class="loading-text">AI is analyzing your query...</div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
