@@ -5,6 +5,7 @@ from django.shortcuts import render
 import json
 from .scraper import StreetEasyAgent
 from .liquidity_scraper import LiquidityEventScraper, LiquidityAnalyzer
+from .sec_edgar_integration import SECEdgarAPI, SECRealEstateAnalyzer
 from .models import StreetEasyProperty, StreetEasySearch, StreetEasyLiquidityEvent, StreetEasyEntity
 
 
