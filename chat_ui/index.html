@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Data Assistant - EDGAR & StreetEasy</title>
+    <title>AI Data Assistant - EDGAR & Real Estate</title>
     <link rel="stylesheet" href="styles.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
@@ -18,7 +18,7 @@
                 </div>
                 <div class="data-sources">
                     <span class="source edgar"><i class="fas fa-building"></i> EDGAR</span>
-                    <span class="source streeteasy"><i class="fas fa-home"></i> StreetEasy</span>
+                    <span class="source streeteasy"><i class="fas fa-home"></i> Real Estate</span>
                 </div>
             </div>
         </div>
@@ -35,7 +35,7 @@
                         <br><br>
                         📈 <strong>EDGAR API</strong> - SEC filings, company financials, insider trading, and corporate data
                         <br>
-                        🏠 <strong>StreetEasy API</strong> - Real estate listings, market trends, property data, and neighborhood analytics
+                        🏠 <strong>Real Estate Database</strong> - High-value property transactions, luxury market trends, and ownership records
                         <br><br>
                         What would you like to explore today?
                     </div>
@@ -52,17 +52,25 @@
                     <i class="fas fa-file-alt"></i>
                     Latest Tesla 10-K filings
                 </button>
-                <button class="query-btn" onclick="sendSuggestedQuery('Find apartments for rent in Manhattan under $3000')">
+                <button class="query-btn" onclick="sendSuggestedQuery('Who in zip code 90210 bought or sold a house over $25 million?')">
                     <i class="fas fa-search"></i>
-                    Manhattan rentals under $3k
+                    $25M+ sales in Beverly Hills
                 </button>
                 <button class="query-btn" onclick="sendSuggestedQuery('Compare Apple and Microsoft financial metrics')">
                     <i class="fas fa-chart-line"></i>
                     Compare AAPL vs MSFT
                 </button>
-                <button class="query-btn" onclick="sendSuggestedQuery('Show real estate trends in Brooklyn')">
+                <button class="query-btn" onclick="sendSuggestedQuery('Show luxury real estate trends in Manhattan zip code 10021')">
                     <i class="fas fa-trending-up"></i>
-                    Brooklyn market trends
+                    Manhattan luxury trends
+                </button>
+                <button class="query-btn" onclick="sendSuggestedQuery('Find high-value property transactions in Palo Alto over $30 million')">
+                    <i class="fas fa-home"></i>
+                    Palo Alto $30M+ sales
+                </button>
+                <button class="query-btn" onclick="sendSuggestedQuery('Who are the biggest buyers in Miami Beach luxury real estate?')">
+                    <i class="fas fa-users"></i>
+                    Miami Beach luxury buyers
                 </button>
             </div>
         </div>
@@ -73,7 +81,7 @@
                 <input 
                     type="text" 
                     id="messageInput" 
-                    placeholder="Ask about EDGAR filings, company data, real estate listings, market trends..."
+                    placeholder="Ask about EDGAR filings, company data, or high-value real estate transactions..."
                     autocomplete="off"
                 >
                 <button id="sendButton" onclick="sendMessage()">

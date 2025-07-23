@@ -6,6 +6,7 @@ import requests
 import json
 from datetime import datetime
 import logging
+import re
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -21,11 +22,25 @@ openai.api_key = os.getenv('OPENAI_API_KEY')
 EDGAR_BASE_URL = "https://data.sec.gov"
 STREETEASY_BASE_URL = "https://streeteasy.com/nyc/api"
 
+# Import our scrapers
+from scrapers import (
+    RealEstateTransactionScraper, 
+    PropertyOwnerScraper, 
+    MarketAnalysisScraper,
+    analyze_buyer_patterns,
+    format_currency
+)
+
 class DataAgent:
     def __init__(self):
         self.client = openai.OpenAI(api_key=openai.api_key)
+        # Initialize scrapers
+        self.real_estate_scraper = RealEstateTransactionScraper()
+        self.owner_scraper = PropertyOwnerScraper()
+        self.market_scraper = MarketAnalysisScraper()
+        
         self.system_prompt = """
-        You are an AI Data Assistant specialized in querying and analyzing data from EDGAR (SEC filings) and StreetEasy (NYC real estate) APIs.
+        You are an AI Data Assistant specialized in querying and analyzing data from EDGAR (SEC filings) and Real Estate transaction databases.
 
         EDGAR API Capabilities:
         - Company filings (10-K, 10-Q, 8-K, proxy statements)
@@ -34,21 +49,29 @@ class DataAgent:
         - Company facts and submissions
         - Mutual fund data
 
-        StreetEasy API Capabilities:
-        - Real estate listings (rentals and sales)
-        - Market trends and analytics
-        - Neighborhood data
-        - Price history and comparisons
-        - Building information
+        Real Estate Data Capabilities:
+        - High-value property transactions ($25M+)
+        - Property ownership records and buyer/seller information
+        - Luxury real estate market trends and analytics
+        - Celebrity and high-profile real estate transactions
+        - Property tax records and assessed values
+        - Deed information and financing details
+
+        When users ask about real estate transactions, you can:
+        - Search for properties bought/sold over specific price thresholds
+        - Identify buyers and sellers in high-value transactions
+        - Analyze luxury market trends by zip code or area
+        - Find ownership patterns and investment activity
+        - Track celebrity or notable person real estate activity
 
         When users ask questions:
-        1. Determine which API(s) to use based on the query
-        2. Extract relevant parameters from the user's request
-        3. Make appropriate API calls
-        4. Analyze and summarize the data
-        5. Present findings in a clear, conversational manner
+        1. Determine which data source(s) to use based on the query
+        2. Extract relevant parameters (zip codes, price ranges, names, dates)
+        3. Retrieve and analyze the appropriate data
+        4. Present findings with specific details and insights
+        5. Offer to dive deeper into any aspect of the data
 
-        Always provide specific, actionable insights and offer to dive deeper into any aspect of the data.
+        Always provide specific, actionable insights and offer to explore related information.
         """
 
     def process_query(self, user_message):
@@ -61,7 +84,7 @@ class DataAgent:
                     {"role": "system", "content": self.system_prompt},
                     {"role": "user", "content": f"""
                     Analyze this query and determine:
-                    1. Which API(s) to use (EDGAR, StreetEasy, or both)
+                    1. Which data source(s) to use (EDGAR, real_estate, or both)
                     2. What specific data to fetch
                     3. Key parameters to extract
                     
@@ -69,14 +92,17 @@ class DataAgent:
                     
                     Respond in JSON format:
                     {{
-                        "apis": ["edgar" | "streeteasy"],
+                        "data_sources": ["edgar" | "real_estate"],
                         "query_type": "description",
                         "parameters": {{
                             "company": "if applicable",
                             "ticker": "if applicable",
-                            "location": "if applicable",
-                            "property_type": "if applicable",
-                            "price_range": "if applicable"
+                            "zip_code": "if applicable",
+                            "location": "if applicable", 
+                            "min_price": "if applicable (numeric)",
+                            "max_price": "if applicable (numeric)",
+                            "person_name": "if applicable",
+                            "transaction_type": "buy/sell/both"
                         }},
                         "specific_request": "what exactly to fetch"
                     }}
@@ -91,11 +117,11 @@ class DataAgent:
             # Fetch data based on intent
             api_data = {}
             
-            if "edgar" in intent_data.get("apis", []):
+            if "edgar" in intent_data.get("data_sources", []):
                 api_data["edgar"] = self.query_edgar(intent_data)
             
-            if "streeteasy" in intent_data.get("apis", []):
-                api_data["streeteasy"] = self.query_streeteasy(intent_data)
+            if "real_estate" in intent_data.get("data_sources", []):
+                api_data["real_estate"] = self.query_real_estate(intent_data)
             
             # Generate response using OpenAI with the fetched data
             response = self.generate_response(user_message, api_data, intent_data)
@@ -160,36 +186,70 @@ class DataAgent:
             logger.error(f"Error querying EDGAR: {str(e)}")
             return {"error": f"EDGAR API error: {str(e)}"}
 
-    def query_streeteasy(self, intent_data):
-        """Query StreetEasy API for real estate data"""
+    def query_real_estate(self, intent_data):
+        """Query real estate transaction data"""
         try:
             params = intent_data.get("parameters", {})
             results = {}
             
-            # Note: StreetEasy API access is limited, so we'll simulate responses
-            # In production, you'd need proper API credentials and endpoints
+            zip_code = params.get("zip_code", "")
+            location = params.get("location", "")
+            min_price = params.get("min_price", 25000000)  # Default to $25M
+            person_name = params.get("person_name", "")
             
-            location = params.get("location", "Manhattan")
-            property_type = params.get("property_type", "rental")
+            # Convert min_price to int if it's a string
+            if isinstance(min_price, str):
+                # Extract numbers from string like "$25M" or "25 million"
+                price_str = min_price.upper().replace('$', '').replace(',', '')
+                if 'M' in price_str or 'MILLION' in price_str:
+                    price_num = float(re.findall(r'[\d.]+', price_str)[0]) * 1000000
+                    min_price = int(price_num)
+                elif 'K' in price_str or 'THOUSAND' in price_str:
+                    price_num = float(re.findall(r'[\d.]+', price_str)[0]) * 1000
+                    min_price = int(price_num)
+                else:
+                    min_price = int(float(price_str)) if price_str.replace('.', '').isdigit() else 25000000
             
-            # Simulated real estate data (replace with actual API calls)
-            results = {
-                "location": location,
-                "property_type": property_type,
-                "sample_data": {
-                    "average_rent": "$3,200",
-                    "median_price": "$1,200,000",
-                    "inventory": "1,234 listings",
-                    "trend": "2.3% increase YoY"
-                },
-                "note": "This is simulated data. Actual StreetEasy API integration requires proper credentials."
-            }
+            # Search for high-value transactions
+            if zip_code or location:
+                search_zip = zip_code if zip_code else self._extract_zip_from_location(location)
+                transactions = self.real_estate_scraper.search_high_value_transactions(search_zip, min_price)
+                results['transactions'] = transactions
+                
+                if transactions:
+                    # Get market analysis for the area
+                    market_data = self.market_scraper.get_luxury_market_trends(search_zip)
+                    results['market_analysis'] = market_data
+                    
+                    # Analyze buyer patterns
+                    buyer_analysis = analyze_buyer_patterns(transactions)
+                    results['buyer_patterns'] = buyer_analysis
+            
+            # Search for specific person's real estate activity
+            if person_name:
+                from scrapers import search_celebrity_real_estate
+                celebrity_transactions = search_celebrity_real_estate(person_name)
+                results['celebrity_transactions'] = celebrity_transactions
             
             return results
             
         except Exception as e:
-            logger.error(f"Error querying StreetEasy: {str(e)}")
-            return {"error": f"StreetEasy API error: {str(e)}"}
+            logger.error(f"Error querying real estate data: {str(e)}")
+            return {"error": f"Real estate data error: {str(e)}"}
+    
+    def _extract_zip_from_location(self, location):
+        """Extract or map location to zip code"""
+        # Simple mapping for demo - in production would use geocoding
+        location_map = {
+            'manhattan': '10021',
+            'beverly hills': '90210', 
+            'palo alto': '94301',
+            'miami beach': '33109',
+            'aspen': '81611',
+            'hamptons': '11962',
+            'malibu': '90265'
+        }
+        return location_map.get(location.lower(), '90210')  # Default to Beverly Hills
 
     def generate_response(self, user_message, api_data, intent_data):
         """Generate final response using OpenAI with API data"""
@@ -230,8 +290,8 @@ class DataAgent:
             data_for_frontend = None
             if api_data.get("edgar", {}).get("company_facts"):
                 data_for_frontend = self.format_financial_data(api_data["edgar"])
-            elif api_data.get("streeteasy"):
-                data_for_frontend = self.format_real_estate_data(api_data["streeteasy"])
+            elif api_data.get("real_estate"):
+                data_for_frontend = self.format_real_estate_transactions(api_data["real_estate"])
             
             return {
                 "response": ai_response,
@@ -281,22 +341,54 @@ class DataAgent:
             logger.error(f"Error formatting financial data: {str(e)}")
             return None
 
-    def format_real_estate_data(self, streeteasy_data):
-        """Format StreetEasy data for frontend visualization"""
+    def format_real_estate_transactions(self, real_estate_data):
+        """Format real estate transaction data for frontend visualization"""
         try:
-            sample_data = streeteasy_data.get("sample_data", {})
+            transactions = real_estate_data.get("transactions", [])
             
-            metrics = [
-                {"label": "Average Rent", "value": sample_data.get("average_rent", "N/A")},
-                {"label": "Median Price", "value": sample_data.get("median_price", "N/A")},
-                {"label": "Active Listings", "value": sample_data.get("inventory", "N/A")},
-                {"label": "Market Trend", "value": sample_data.get("trend", "N/A")}
-            ]
+            if transactions:
+                # Create a table format for high-value transactions
+                headers = ["Address", "Price", "Date", "Buyer", "Details"]
+                rows = []
+                
+                for transaction in transactions[:10]:  # Limit to top 10
+                    price_formatted = format_currency(transaction.get('price', 0))
+                    sqft = transaction.get('sqft', 'Unknown')
+                    details = f"{sqft} sqft" if sqft != 'Unknown' else "Details available"
+                    
+                    row = [
+                        transaction.get('address', 'N/A'),
+                        price_formatted,
+                        transaction.get('sale_date', 'N/A'),
+                        transaction.get('buyer', 'N/A'),
+                        details
+                    ]
+                    rows.append(row)
+                
+                return {
+                    "type": "table",
+                    "content": {
+                        "headers": headers,
+                        "rows": rows
+                    }
+                }
             
-            return {
-                "type": "metrics",
-                "content": metrics
-            }
+            # If no transactions, show market metrics
+            market_data = real_estate_data.get("market_analysis", {})
+            if market_data:
+                metrics = [
+                    {"label": "Average Sale Price", "value": format_currency(market_data.get("average_sale_price", 0))},
+                    {"label": "Transactions (12mo)", "value": str(market_data.get("transactions_last_12_months", 0))},
+                    {"label": "Market Trend", "value": market_data.get("market_trend", "N/A")},
+                    {"label": "YoY Change", "value": market_data.get("year_over_year_change", "N/A")}
+                ]
+                
+                return {
+                    "type": "metrics", 
+                    "content": metrics
+                }
+            
+            return None
             
         except Exception as e:
             logger.error(f"Error formatting real estate data: {str(e)}")
@@ -345,7 +437,7 @@ def health_check():
         "services": {
             "openai": "configured" if openai.api_key else "missing_key",
             "edgar": "available",
-            "streeteasy": "simulated"
+            "real_estate_scrapers": "active"
         }
     })
 

@@ -16,7 +16,10 @@ def install_packages():
         'flask-cors==4.0.0', 
         'openai==1.40.0',
         'requests==2.31.0',
-        'python-dotenv==1.0.0'
+        'python-dotenv==1.0.0',
+        'beautifulsoup4==4.12.2',
+        'pandas==2.0.3',
+        'lxml==4.9.3'
     ]
     
     print("Installing required packages...")
